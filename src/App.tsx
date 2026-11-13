@@ -21,6 +21,8 @@ const Marca = () => (
 export default function App() {
   const [pantalla, setPantalla] = useState<Pantalla>("inicio");
   const [frase, setFrase] = useState("");
+  const [tuFrase, setTuFrase] = useState("");
+  const [ultimo, setUltimo] = useState<"ai" | "user">("ai");
   const [error, setError] = useState("");
   const iniciada = useRef(false);
 
@@ -30,6 +32,8 @@ export default function App() {
     },
     onMessage: (m) => {
       if (m.source === "ai") setFrase(m.message);
+      else setTuFrase(m.message);
+      setUltimo(m.source === "ai" ? "ai" : "user");
     },
     onDisconnect: () => {
       if (iniciada.current) setPantalla("cierre");
@@ -48,6 +52,8 @@ export default function App() {
   async function iniciar() {
     setError("");
     setFrase("");
+    setTuFrase("");
+    setUltimo("ai");
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
@@ -102,11 +108,13 @@ export default function App() {
                 </div>
                 <span>{conectando || !conectada ? "Conectando con Armoni…" : "Armoni está hablando"}</span>
               </div>
-              {frase && <p className="frase">{frase}</p>}
+              {tuFrase && <p className="tu-frase"><span className="tu-etiqueta">Tú</span>{tuFrase}</p>}
+              {frase && ultimo === "ai" && <p className="frase">{frase}</p>}
             </>
           ) : (
             <>
               {frase && <p className="frase frase-tenue">{frase}</p>}
+              {tuFrase && ultimo === "user" && <p className="tu-frase"><span className="tu-etiqueta">Tú</span>{tuFrase}</p>}
               <div className="estado-escucha">
                 <div className="mic-pulso">
                   <div className="pulso" aria-hidden="true" />
