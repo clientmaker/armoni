@@ -187,8 +187,10 @@ button { font: inherit; cursor: pointer; }
   max-width: 85%;
   padding: 10px 14px;
   border-radius: 16px 16px 4px 16px;
-  background: rgba(245,241,238,.12);
-  border: 1px solid rgba(245,241,238,.18);
+  background: rgba(11,11,12,.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(245,241,238,.22);
   font-size: 16px;
   line-height: 1.4;
   color: var(--texto);
@@ -202,3 +204,20 @@ button { font: inherit; cursor: pointer; }
   text-transform: uppercase;
   color: var(--rosa);
 }
+
+/* Conversación estable: diálogo anclado abajo y fila de estado de alto fijo. */
+.dialogo {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 46dvh;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+.dialogo > * { animation: entra .35s ease-out; }
+@keyframes entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.frase-previa { font-size: 16px; color: var(--tenue); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.estado-fila { height: 56px; display: flex; align-items: center; }
+.estado-fila .estado-escucha { padding: 0; }
+.estado-fila .mic-pulso { width: 48px; height: 48px; }
+.estado-fila .estado-habla { align-self: center; }

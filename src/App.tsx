@@ -6,6 +6,8 @@ const AGENTE = "agent_1401m7bajtcbec08vtmyzapn65xj";
 // WebRTC da menor latencia y mejor cancelación de eco; si la red no lo permite
 // en este tiempo, se reintenta por WebSocket.
 const ESPERA_WEBRTC_MS = 6000;
+const SALUDO =
+  "Hola, soy Armoni, tu anfitriona en la Convención Mazda México 2027. Antes de que viajes me gustaría conocerte un poco para preparar todo a tu medida. ¿Cómo te llamas?";
 
 type Pantalla = "inicio" | "conversacion" | "cierre";
 type Canal = "webrtc" | "websocket";
@@ -58,9 +60,8 @@ export default function App() {
   const [intento, setIntento] = useState(0);
   const [canal, setCanal] = useState<Canal>("webrtc");
   const [estado, setEstado] = useState<EstadoVoz>("conectando");
-  const [frase, setFrase] = useState("");
-  const [tuFrase, setTuFrase] = useState("");
-  const [ultimo, setUltimo] = useState<"ai" | "user">("ai");
+  const [mensajes, setMensajes] = useState<{ id: number; fuente: "ai" | "user"; texto: string }[]>([]);
+  const modoPendiente = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState("");
 
   const intentoActual = useRef(0);
@@ -94,16 +95,23 @@ export default function App() {
       conectada.current = true;
       limpiarEspera();
       setEstado("escuchando");
+      // El saludo es fijo: se muestra de una vez, sin esperar la transcripción.
+      setMensajes((ms) => (ms.length ? ms : [{ id: 1, fuente: "ai", texto: SALUDO }]));
     },
     onModo: (hablando) => {
       if (id !== intentoActual.current) return;
-      setEstado(hablando ? "hablando" : "escuchando");
+      // Las pausas cortas entre frases de Armoni no cambian el estado (evita parpadeos).
+      if (modoPendiente.current) clearTimeout(modoPendiente.current);
+      if (hablando) setEstado("hablando");
+      else modoPendiente.current = setTimeout(() => setEstado("escuchando"), 450);
     },
     onMensaje: (fuente, texto) => {
       if (id !== intentoActual.current) return;
-      if (fuente === "ai") setFrase(texto);
-      else setTuFrase(texto);
-      setUltimo(fuente);
+      setMensajes((ms) => {
+        const ult = ms.at(-1);
+        if (ult && ult.fuente === fuente && ult.texto.trim() === texto.trim()) return ms;
+        return [...ms.slice(-1), { id: (ult?.id ?? 0) + 1, fuente, texto }];
+      });
     },
     onFin: () => {
       if (id !== intentoActual.current || !conectada.current) return;
@@ -128,9 +136,7 @@ export default function App() {
 
   async function iniciar() {
     setError("");
-    setFrase("");
-    setTuFrase("");
-    setUltimo("ai");
+    setMensajes([]);
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
@@ -188,34 +194,37 @@ export default function App() {
 
       {pantalla === "conversacion" && (
         <main className="pie pie-conversacion">
-          {hablandoOConectando ? (
-            <>
+          <div className="dialogo" aria-live="polite">
+            {mensajes.map((m, i) =>
+              m.fuente === "user" ? (
+                <p key={m.id} className="tu-frase"><span className="tu-etiqueta">Tú</span>{m.texto}</p>
+              ) : (
+                <p key={m.id} className={i === mensajes.length - 1 ? "frase" : "frase frase-previa"}>{m.texto}</p>
+              ),
+            )}
+          </div>
+          <div className="estado-fila">
+            {hablandoOConectando ? (
               <div className="estado-habla">
                 <div className={`onda ${estado === "conectando" ? "onda-quieta" : ""}`} aria-hidden="true">
                   <span /><span /><span /><span /><span />
                 </div>
                 <span>{estado === "conectando" ? "Conectando con Armoni…" : "Armoni está hablando"}</span>
               </div>
-              {tuFrase && <p className="tu-frase"><span className="tu-etiqueta">Tú</span>{tuFrase}</p>}
-              {frase && ultimo === "ai" && <p className="frase">{frase}</p>}
-            </>
-          ) : (
-            <>
-              {frase && <p className="frase frase-tenue">{frase}</p>}
-              {tuFrase && ultimo === "user" && <p className="tu-frase"><span className="tu-etiqueta">Tú</span>{tuFrase}</p>}
+            ) : (
               <div className="estado-escucha">
                 <div className="mic-pulso">
                   <div className="pulso" aria-hidden="true" />
                   <div className="pulso dos" aria-hidden="true" />
-                  <div className="mic-circulo"><Mic size={26} /></div>
+                  <div className="mic-circulo"><Mic size={22} /></div>
                 </div>
                 <div className="escucha-textos">
                   <span className="escucha-titulo">Te escucho</span>
                   <span className="escucha-sub">Habla con naturalidad</span>
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </div>
           <button className="boton-secundario" onClick={terminar}>Terminar conversación</button>
         </main>
       )}
