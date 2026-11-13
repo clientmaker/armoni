@@ -48,7 +48,11 @@ function Sesion({ canal, ev }: { canal: Canal; ev: EventosSesion }) {
 
 // Muestra del texto completo tantos caracteres (sin contar espacios) como ya se
 // pronunciaron, cerrando la palabra en curso. Sin texto completo, limpia espacios.
-function visible(hablado: string, completo?: string) {
+function visible(habladoCrudo: string, completoCrudo?: string) {
+  // Las etiquetas de expresión de la voz ([laughs], [warmly]…) no se muestran.
+  const sinEtiquetas = (t: string) => t.replace(/\[[^\]]*\]\s*/g, "");
+  const hablado = sinEtiquetas(habladoCrudo);
+  const completo = completoCrudo === undefined ? undefined : sinEtiquetas(completoCrudo);
   if (!completo) return hablado.replace(/\s+/g, " ").trimStart();
   let n = hablado.replace(/\s/g, "").length;
   let i = 0;
