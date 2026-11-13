@@ -221,3 +221,4 @@ button { font: inherit; cursor: pointer; }
 .estado-fila .estado-escucha { padding: 0; }
 .estado-fila .mic-pulso { width: 48px; height: 48px; }
 .estado-fila .estado-habla { align-self: center; }
+.escucha-aviso { color: var(--rosa); font-size: 13px; line-height: 1.35; }

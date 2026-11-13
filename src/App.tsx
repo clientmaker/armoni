@@ -3,10 +3,13 @@ import { ConversationProvider, useConversation } from "@elevenlabs/react";
 
 // Agente público de ElevenLabs (sin autenticación): demo de Armoni.
 const AGENTE = "agent_1401m7bajtcbec08vtmyzapn65xj";
-// Se conecta por WebSocket: es el único canal que entrega la sincronía de cada
-// palabra con el audio, para mostrar el texto a medida que Armoni lo dice.
-// WebRTC queda como alternativa si se cambia CANAL_INICIAL.
-const CANAL_INICIAL: "webrtc" | "websocket" = "websocket";
+// WebSocket entrega la sincronía de cada palabra con el audio (texto en vivo).
+// En Android el micrófono por WebSocket falla en algunos equipos, así que ahí se
+// usa WebRTC (texto completo al final de cada frase) con respaldo por WebSocket.
+const ES_ANDROID = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+const CANAL_INICIAL: "webrtc" | "websocket" = ES_ANDROID ? "webrtc" : "websocket";
+// Si mientras Armoni escucha el micrófono no capta nada en este tiempo, se avisa.
+const ESPERA_SILENCIO_MS = 7000;
 const ESPERA_WEBRTC_MS = 6000;
 // Si llega el texto de Armoni pero no la sincronía, se muestra completo tras esta espera.
 const ESPERA_SINCRONIA_MS = 1500;
@@ -22,6 +25,7 @@ type EventosSesion = {
   onModo: (hablando: boolean) => void;
   onMensaje: (fuente: "ai" | "user", texto: string) => void;
   onAlineacion: (a: Alineacion) => void;
+  onVolumen: (v: number) => void;
   onFin: () => void;
   onFallo: (msg: string) => void;
 };
@@ -38,6 +42,16 @@ function Sesion({ canal, ev }: { canal: Canal; ev: EventosSesion }) {
     onError: (msg) => ev.onFallo(msg),
   });
   const iniciada = useRef(false);
+  useEffect(() => {
+    const t = setInterval(() => {
+      try {
+        ev.onVolumen(conv.getInputVolume());
+      } catch {
+        // Sin sesión activa todavía.
+      }
+    }, 400);
+    return () => clearInterval(t);
+  });
   useEffect(() => {
     if (iniciada.current) return;
     iniciada.current = true;
@@ -97,6 +111,10 @@ export default function App() {
   const relojes = useRef<ReturnType<typeof setTimeout>[]>([]);
   const textoSinSincronia = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState("");
+  const [sinMicro, setSinMicro] = useState(false);
+  const silencioDesde = useRef<number | null>(null);
+  const estadoRef = useRef<EstadoVoz>("conectando");
+  estadoRef.current = estado;
 
   const intentoActual = useRef(0);
   const conectada = useRef(false);
@@ -168,6 +186,11 @@ export default function App() {
         setMensajes((ms) => ms.map((m) => (m.id === v ? { ...m, completo: texto } : m)));
         return;
       }
+      // Por WebRTC no hay sincronía: el texto se muestra de una vez.
+      if (c === "webrtc") {
+        vivo.current = agregar("ai", texto);
+        return;
+      }
       if (textoSinSincronia.current) clearTimeout(textoSinSincronia.current);
       textoSinSincronia.current = setTimeout(() => {
         textoSinSincronia.current = null;
@@ -175,6 +198,16 @@ export default function App() {
           vivo.current = agregar("ai", texto);
         }
       }, ESPERA_SINCRONIA_MS);
+    },
+    onVolumen: (v) => {
+      if (id !== intentoActual.current) return;
+      if (estadoRef.current !== "escuchando" || v > 0.01) {
+        silencioDesde.current = null;
+        if (v > 0.01) setSinMicro(false);
+        return;
+      }
+      silencioDesde.current ??= Date.now();
+      if (Date.now() - silencioDesde.current > ESPERA_SILENCIO_MS) setSinMicro(true);
     },
     onAlineacion: (a) => {
       if (id !== intentoActual.current) return;
@@ -238,6 +271,8 @@ export default function App() {
     setError("");
     setMensajes([]);
     limpiarVivo();
+    setSinMicro(false);
+    silencioDesde.current = null;
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
@@ -322,7 +357,9 @@ export default function App() {
                 </div>
                 <div className="escucha-textos">
                   <span className="escucha-titulo">Te escucho</span>
-                  <span className="escucha-sub">Habla con naturalidad</span>
+                  <span className={sinMicro ? "escucha-sub escucha-aviso" : "escucha-sub"}>
+                    {sinMicro ? "No te escuchamos. Revisa el permiso del micrófono o abre el enlace en Chrome." : "Habla con naturalidad"}
+                  </span>
                 </div>
               </div>
             )}
