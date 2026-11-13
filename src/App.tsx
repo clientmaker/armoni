@@ -3,11 +3,15 @@ import { ConversationProvider, useConversation } from "@elevenlabs/react";
 
 // Agente público de ElevenLabs (sin autenticación): demo de Armoni.
 const AGENTE = "agent_1401m7bajtcbec08vtmyzapn65xj";
-// WebRTC da menor latencia y mejor cancelación de eco; si la red no lo permite
-// en este tiempo, se reintenta por WebSocket.
+// Se conecta por WebSocket: es el único canal que entrega la sincronía de cada
+// palabra con el audio, para mostrar el texto a medida que Armoni lo dice.
+// WebRTC queda como alternativa si se cambia CANAL_INICIAL.
+const CANAL_INICIAL: "webrtc" | "websocket" = "websocket";
 const ESPERA_WEBRTC_MS = 6000;
-const SALUDO =
-  "Hola, soy Armoni, tu anfitriona en la Convención Mazda México 2027. Antes de que viajes me gustaría conocerte un poco para preparar todo a tu medida. ¿Cómo te llamas?";
+// Si llega el texto de Armoni pero no la sincronía, se muestra completo tras esta espera.
+const ESPERA_SINCRONIA_MS = 1500;
+
+type Alineacion = { chars: string[]; char_start_times_ms: number[]; char_durations_ms: number[] };
 
 type Pantalla = "inicio" | "conversacion" | "cierre";
 type Canal = "webrtc" | "websocket";
@@ -17,6 +21,7 @@ type EventosSesion = {
   onConectada: () => void;
   onModo: (hablando: boolean) => void;
   onMensaje: (fuente: "ai" | "user", texto: string) => void;
+  onAlineacion: (a: Alineacion) => void;
   onFin: () => void;
   onFallo: (msg: string) => void;
 };
@@ -28,6 +33,7 @@ function Sesion({ canal, ev }: { canal: Canal; ev: EventosSesion }) {
     onConnect: () => ev.onConectada(),
     onModeChange: ({ mode }) => ev.onModo(mode === "speaking"),
     onMessage: (m) => ev.onMensaje(m.source === "ai" ? "ai" : "user", m.message),
+    onAudioAlignmentPlayback: ({ alignment }) => ev.onAlineacion(alignment),
     onDisconnect: () => ev.onFin(),
     onError: (msg) => ev.onFallo(msg),
   });
@@ -38,6 +44,20 @@ function Sesion({ canal, ev }: { canal: Canal; ev: EventosSesion }) {
     conv.startSession({ connectionType: canal });
   }, [conv, canal]);
   return null;
+}
+
+// Muestra del texto completo tantos caracteres (sin contar espacios) como ya se
+// pronunciaron, cerrando la palabra en curso. Sin texto completo, limpia espacios.
+function visible(hablado: string, completo?: string) {
+  if (!completo) return hablado.replace(/\s+/g, " ").trimStart();
+  let n = hablado.replace(/\s/g, "").length;
+  let i = 0;
+  while (i < completo.length && n > 0) {
+    if (!/\s/.test(completo[i])) n--;
+    i++;
+  }
+  while (i < completo.length && !/\s/.test(completo[i])) i++;
+  return completo.slice(0, i);
 }
 
 const Mic = ({ size = 20 }: { size?: number }) => (
@@ -58,10 +78,20 @@ const Marca = () => (
 export default function App() {
   const [pantalla, setPantalla] = useState<Pantalla>("inicio");
   const [intento, setIntento] = useState(0);
-  const [canal, setCanal] = useState<Canal>("webrtc");
+  const [canal, setCanal] = useState<Canal>(CANAL_INICIAL);
   const [estado, setEstado] = useState<EstadoVoz>("conectando");
-  const [mensajes, setMensajes] = useState<{ id: number; fuente: "ai" | "user"; texto: string }[]>([]);
+  // En los mensajes de Armoni, `texto` es lo ya pronunciado (según la sincronía del audio)
+  // y `completo` el texto final de la respuesta, que da la ortografía y los espacios.
+  const [mensajes, setMensajes] = useState<{ id: number; fuente: "ai" | "user"; texto: string; completo?: string }[]>([]);
   const modoPendiente = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Texto en vivo: id del mensaje de Armoni que se está escribiendo palabra a palabra.
+  const vivo = useRef<number | null>(null);
+  const contador = useRef(0);
+  const cola = useRef<string[]>([]);
+  const reveladas = useRef(0);
+  const ultimoTextoAI = useRef("");
+  const relojes = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const textoSinSincronia = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState("");
 
   const intentoActual = useRef(0);
@@ -73,7 +103,24 @@ export default function App() {
     espera.current = null;
   };
 
+  function limpiarVivo() {
+    relojes.current.forEach(clearTimeout);
+    relojes.current = [];
+    if (textoSinSincronia.current) clearTimeout(textoSinSincronia.current);
+    textoSinSincronia.current = null;
+    vivo.current = null;
+    cola.current = [];
+    reveladas.current = 0;
+  }
+
+  function agregar(fuente: "ai" | "user", texto: string): number {
+    const nuevoId = ++contador.current;
+    setMensajes((ms) => [...ms.slice(-1), { id: nuevoId, fuente, texto }]);
+    return nuevoId;
+  }
+
   function abrir(c: Canal) {
+    limpiarVivo();
     limpiarEspera();
     conectada.current = false;
     intentoActual.current += 1;
@@ -95,8 +142,6 @@ export default function App() {
       conectada.current = true;
       limpiarEspera();
       setEstado("escuchando");
-      // El saludo es fijo: se muestra de una vez, sin esperar la transcripción.
-      setMensajes((ms) => (ms.length ? ms : [{ id: 1, fuente: "ai", texto: SALUDO }]));
     },
     onModo: (hablando) => {
       if (id !== intentoActual.current) return;
@@ -107,10 +152,61 @@ export default function App() {
     },
     onMensaje: (fuente, texto) => {
       if (id !== intentoActual.current) return;
-      setMensajes((ms) => {
-        const ult = ms.at(-1);
-        if (ult && ult.fuente === fuente && ult.texto.trim() === texto.trim()) return ms;
-        return [...ms.slice(-1), { id: (ult?.id ?? 0) + 1, fuente, texto }];
+      if (fuente === "user") {
+        limpiarVivo();
+        ultimoTextoAI.current = "";
+        agregar("user", texto);
+        return;
+      }
+      ultimoTextoAI.current = texto;
+      if (vivo.current !== null) {
+        const v = vivo.current;
+        setMensajes((ms) => ms.map((m) => (m.id === v ? { ...m, completo: texto } : m)));
+        return;
+      }
+      if (textoSinSincronia.current) clearTimeout(textoSinSincronia.current);
+      textoSinSincronia.current = setTimeout(() => {
+        textoSinSincronia.current = null;
+        if (vivo.current === null && intentoActual.current === id) {
+          vivo.current = agregar("ai", texto);
+        }
+      }, ESPERA_SINCRONIA_MS);
+    },
+    onAlineacion: (a) => {
+      if (id !== intentoActual.current) return;
+      if (textoSinSincronia.current) {
+        clearTimeout(textoSinSincronia.current);
+        textoSinSincronia.current = null;
+      }
+      // Agrupa los caracteres en palabras con su momento de inicio en el audio.
+      const palabras: { texto: string; ms: number }[] = [];
+      a.chars.forEach((ch, i) => {
+        const empieza = i === 0 || (/\s/.test(a.chars[i - 1]) && !/\s/.test(ch));
+        if (empieza || !palabras.length) palabras.push({ texto: ch, ms: a.char_start_times_ms[i] ?? 0 });
+        else palabras[palabras.length - 1].texto += ch;
+      });
+      if (vivo.current === null) {
+        vivo.current = agregar("ai", "");
+        if (ultimoTextoAI.current) {
+          const t = ultimoTextoAI.current;
+          const v = vivo.current;
+          setMensajes((ms) => ms.map((m) => (m.id === v ? { ...m, completo: t } : m)));
+        }
+      }
+      const msgId = vivo.current;
+      // Cola en orden de llegada: cada reloj revela "hasta su palabra", así el texto
+      // queda en orden aunque dos fragmentos de audio se solapen.
+      const base = cola.current.length;
+      cola.current.push(...palabras.map((p) => p.texto));
+      palabras.forEach((p, k) => {
+        relojes.current.push(
+          setTimeout(() => {
+            if (vivo.current !== msgId) return;
+            reveladas.current = Math.max(reveladas.current, base + k + 1);
+            const texto = cola.current.slice(0, reveladas.current).join("");
+            setMensajes((ms) => ms.map((m) => (m.id === msgId ? { ...m, texto } : m)));
+          }, p.ms),
+        );
       });
     },
     onFin: () => {
@@ -137,6 +233,7 @@ export default function App() {
   async function iniciar() {
     setError("");
     setMensajes([]);
+    limpiarVivo();
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
@@ -145,11 +242,12 @@ export default function App() {
       return;
     }
     setPantalla("conversacion");
-    abrir("webrtc");
+    abrir(CANAL_INICIAL);
   }
 
   function terminar() {
     limpiarEspera();
+    limpiarVivo();
     intentoActual.current += 1;
     conectada.current = false;
     setPantalla("cierre");
@@ -195,11 +293,11 @@ export default function App() {
       {pantalla === "conversacion" && (
         <main className="pie pie-conversacion">
           <div className="dialogo" aria-live="polite">
-            {mensajes.map((m, i) =>
+            {mensajes.map((m) => ({ ...m, texto: visible(m.texto, m.completo) })).filter((m) => m.texto).map((m, i, lista) =>
               m.fuente === "user" ? (
                 <p key={m.id} className="tu-frase"><span className="tu-etiqueta">Tú</span>{m.texto}</p>
               ) : (
-                <p key={m.id} className={i === mensajes.length - 1 ? "frase" : "frase frase-previa"}>{m.texto}</p>
+                <p key={m.id} className={i === lista.length - 1 ? "frase" : "frase frase-previa"}>{m.texto}</p>
               ),
             )}
           </div>
