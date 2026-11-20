@@ -250,4 +250,4 @@ button { font: inherit; cursor: pointer; }
 .pantalla-recorte .estado-habla,
 .pantalla-recorte .mic-circulo { background: #c8001e; color: #fff; }
 .pantalla-recorte .filete { background: #fff; }
-.logo { height: 56px; width: auto; border-radius: 2px; }
+.logo { height: 64px; width: auto; border-radius: 2px; }
