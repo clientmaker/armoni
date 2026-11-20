@@ -1,4 +1,6 @@
 :root {
+  --fondo-rgb: 11,11,12;
+  --boton-texto: #fff;
   --negro: #0b0b0c;
   --vino: #8c1d32;
   --rosa: #e0727f;
@@ -40,11 +42,11 @@ button { font: inherit; cursor: pointer; }
 .velo {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(11,11,12,.75) 0%, rgba(11,11,12,0) 18%, rgba(11,11,12,0) 42%, rgba(11,11,12,.85) 62%, var(--negro) 78%);
+  background: linear-gradient(180deg, rgba(var(--fondo-rgb),.75) 0%, rgba(var(--fondo-rgb),0) 18%, rgba(var(--fondo-rgb),0) 42%, rgba(var(--fondo-rgb),.85) 62%, var(--negro) 78%);
   transition: background .4s;
 }
 .velo-alto {
-  background: linear-gradient(180deg, rgba(11,11,12,.75) 0%, rgba(11,11,12,0) 18%, rgba(11,11,12,0) 48%, rgba(11,11,12,.85) 66%, var(--negro) 80%);
+  background: linear-gradient(180deg, rgba(var(--fondo-rgb),.75) 0%, rgba(var(--fondo-rgb),0) 18%, rgba(var(--fondo-rgb),0) 48%, rgba(var(--fondo-rgb),.85) 66%, var(--negro) 80%);
 }
 
 .cabecera {
@@ -63,7 +65,7 @@ button { font: inherit; cursor: pointer; }
 .cerrar {
   width: 44px; height: 44px;
   border-radius: 22px;
-  background: rgba(11,11,12,.55);
+  background: rgba(var(--fondo-rgb),.55);
   border: 1px solid rgba(245,241,238,.25);
   color: var(--texto);
   display: flex; align-items: center; justify-content: center;
@@ -97,7 +99,7 @@ button { font: inherit; cursor: pointer; }
   border: 0;
   border-radius: 28px;
   background: var(--vino);
-  color: #fff;
+  color: var(--boton-texto);
   display: flex; align-items: center; justify-content: center; gap: 10px;
   font-size: 16px; font-weight: 600;
 }
@@ -187,7 +189,7 @@ button { font: inherit; cursor: pointer; }
   max-width: 85%;
   padding: 10px 14px;
   border-radius: 16px 16px 4px 16px;
-  background: rgba(11,11,12,.72);
+  background: rgba(var(--fondo-rgb),.72);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(245,241,238,.22);
@@ -222,3 +224,30 @@ button { font: inherit; cursor: pointer; }
 .estado-fila .mic-pulso { width: 48px; height: 48px; }
 .estado-fila .estado-habla { align-self: center; }
 .escucha-aviso { color: var(--rosa); font-size: 13px; line-height: 1.35; }
+
+/* Variante con figura recortada (sin fondo) sobre un degradado de marca. */
+.pantalla-recorte {
+  background:
+    radial-gradient(120% 60% at 50% 22%, #c8001e 0%, #8a0012 38%, transparent 70%),
+    linear-gradient(160deg, #7a0010 0%, var(--negro) 70%);
+}
+.pantalla-recorte::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, transparent 0 18%, rgba(255,90,90,.35) 18.4%, transparent 19% 100%),
+    linear-gradient(115deg, transparent 0 78%, rgba(255,120,120,.28) 78.3%, transparent 78.8% 100%);
+  pointer-events: none;
+}
+.foto-recorte {
+  inset: auto 0 auto 0;
+  top: 64px;
+  height: auto;
+  object-fit: contain;
+  object-position: top center;
+}
+.pantalla-recorte .estado-habla,
+.pantalla-recorte .mic-circulo { background: #c8001e; color: #fff; }
+.pantalla-recorte .filete { background: #fff; }
+.logo { height: 56px; width: auto; border-radius: 2px; }

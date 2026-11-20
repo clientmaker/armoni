@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ConversationProvider, useConversation } from "@elevenlabs/react";
 
-// Agente público de ElevenLabs (sin autenticación): demo de Armoni.
-const AGENTE = "agent_1401m7bajtcbec08vtmyzapn65xj";
+import { clienteActual } from "./clientes";
+
+// Cada demo usa su agente público de ElevenLabs (sin autenticación).
+const CLIENTE = clienteActual();
+const AGENTE = CLIENTE.agente;
+const NOMBRE = CLIENTE.nombre;
 // WebSocket entrega la sincronía de cada palabra con el audio (texto en vivo).
 // En Android el micrófono por WebSocket falla en algunos equipos, así que ahí se
 // usa WebRTC (texto completo al final de cada frase) con respaldo por WebSocket.
@@ -88,8 +92,8 @@ const Mic = ({ size = 20 }: { size?: number }) => (
 
 const Marca = () => (
   <div className="marca">
-    <div className="marca-titulo">SOMOS ARMONÍA</div>
-    <div className="marca-sub">Convención México 2027</div>
+    <div className="marca-titulo">{CLIENTE.marcaTitulo}</div>
+    <div className="marca-sub">{CLIENTE.marcaSub}</div>
   </div>
 );
 
@@ -260,7 +264,7 @@ export default function App() {
       }
       limpiarEspera();
       intentoActual.current += 1;
-      setError("No pudimos conectar con Armoni. Intenta de nuevo.");
+      setError(`No pudimos conectar con ${NOMBRE}. Intenta de nuevo.`);
       setPantalla("inicio");
     },
   });
@@ -277,7 +281,7 @@ export default function App() {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true });
       s.getTracks().forEach((t) => t.stop());
     } catch {
-      setError("Necesitamos acceso al micrófono para conversar con Armoni.");
+      setError(`Necesitamos acceso al micrófono para conversar con ${NOMBRE}.`);
       return;
     }
     setPantalla("conversacion");
@@ -295,8 +299,8 @@ export default function App() {
   const hablandoOConectando = estado !== "escuchando";
 
   return (
-    <div className="pantalla">
-      <img className="foto" src="/armoni_fondo_oscuro.jpg" alt="Armoni, anfitriona virtual de la convención" />
+    <div className={`pantalla pantalla-${CLIENTE.tipoFoto}`} style={CLIENTE.colores as React.CSSProperties}>
+      <img className={CLIENTE.tipoFoto === "recorte" ? "foto foto-recorte" : "foto"} src={CLIENTE.foto} alt={`${NOMBRE}, anfitriona virtual de la convención`} />
       <div className={`velo ${pantalla === "conversacion" ? "velo-alto" : ""}`} aria-hidden="true" />
 
       {pantalla === "conversacion" && (
@@ -307,6 +311,7 @@ export default function App() {
 
       <header className="cabecera">
         <Marca />
+        {pantalla !== "conversacion" && CLIENTE.logo && <img className="logo" src={CLIENTE.logo} alt="" />}
         {pantalla === "conversacion" && (
           <button className="cerrar" aria-label="Terminar conversación" onClick={terminar}>
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -321,9 +326,9 @@ export default function App() {
         <main className="pie">
           <div className="antetitulo">BEFORE YOU GO</div>
           <h1 className="titulo">Antes de que viajes, conozcámonos.</h1>
-          <p className="texto">Armoni te hará unas preguntas para preparar la convención a tu medida. Son unos dos minutos.</p>
+          <p className="texto">{NOMBRE} te hará unas preguntas para preparar la convención a tu medida. Son unos dos minutos.</p>
           <button className="boton-principal" onClick={iniciar}>
-            <Mic /> Hablar con Armoni
+            <Mic /> Hablar con {NOMBRE}
           </button>
           <p className={error ? "nota nota-error" : "nota"}>{error || "Te pediremos permiso para usar el micrófono."}</p>
         </main>
@@ -346,7 +351,7 @@ export default function App() {
                 <div className={`onda ${estado === "conectando" ? "onda-quieta" : ""}`} aria-hidden="true">
                   <span /><span /><span /><span /><span />
                 </div>
-                <span>{estado === "conectando" ? "Conectando con Armoni…" : "Armoni está hablando"}</span>
+                <span>{estado === "conectando" ? `Conectando con ${NOMBRE}…` : `${NOMBRE} está hablando`}</span>
               </div>
             ) : (
               <div className="estado-escucha">
@@ -371,7 +376,7 @@ export default function App() {
       {pantalla === "cierre" && (
         <main className="pie">
           <div className="filete" />
-          <h1 className="titulo">Gracias por conversar con Armoni.</h1>
+          <h1 className="titulo">Gracias por conversar con {NOMBRE}.</h1>
           <p className="texto">Con lo que nos contaste prepararemos tu experiencia en la convención. Nos vemos muy pronto.</p>
           <button className="boton-secundario" onClick={() => setPantalla("inicio")}>Volver a conversar</button>
         </main>
